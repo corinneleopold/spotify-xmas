@@ -176,20 +176,20 @@ createPlaylist <- function(query) {
 
 ```{r}
 # Instrumental songs
-instrumental <- createPlaylist("Christmas instrumental")
+instrum <- createPlaylist("Christmas instrumental")
+instrum <- as.data.frame(instrum)
+head(instrum)
 
 # A Cappella songs
 acappella <- createPlaylist("a cappella christmas")
+acappella <- as.data.frame(acappella)
 head(acappella)
 ```
 
 
-
-
-
 ### Get audio features
 ```{r}
-get_track_audio_features(fullTrackDf %>% select(track_name, track_uri) %>% slice(1))
+get_track_audio_features(as.data.frame(acappella), get_spotify_access_token())
 ```
 
 
