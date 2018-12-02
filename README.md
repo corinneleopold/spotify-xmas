@@ -1,11 +1,11 @@
 # spotify-xmas
 
-This program finds the most popular, non-traditional versions of Christmas songs.
+This program uses the Spotify API and the spotifyr package to create playlists with the most popular, non-traditional versions of Christmas songs.
 
-See the most popular songs by categories including:
+Build a playlist of the best songs by genre or other categories including:
 
-- Genre
 - Instrument only
+- A Cappella
 - Danceability
 - Acousticness
-- Tempo
+- Energy
