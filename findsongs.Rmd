@@ -80,16 +80,18 @@ head(instrumPL)
 ```
 
 
-### Since `searchPlaylists` returns many playlists, get the number of followers for each playlist and only keep the playlists with the top 5 follower counts.
+### Since `searchPlaylists` returns many playlists, get the number of followers for each playlist and only keep the playlists with the top n follower counts.
 ```{r}
-getFollowers <- function(df) {
+# Example: Get top 3 playlists
+# getTopPLs(playlistDf, n = 3)
+getTopPLs <- function(df, n = 5) {
   
   df$followers <- NA
   i <- 1
   
   # Loop through playlist_id, get each playlist's number of followers, and store result in df
   for (id in df$playlist_id) {
-    followReq <- paste("curl -ik -X GET 'https://api.spotify.com/v1/playlists/", id, 
+    followReq <- paste("curl -X GET 'https://api.spotify.com/v1/playlists/", id, 
                        "' -H 'Authorization: Bearer ", token, "'", sep="")
     followResp <- make_req(straighten(followReq))
   
@@ -99,39 +101,31 @@ getFollowers <- function(df) {
     followDf <- fromJSON(followJson)
 
     # Set corresponding value in followers column
-    df$followers[i] <- df$followers$total
+    df$followers[i] <- followDf$followers$total
     i <- i + 1
   }
   
-  return(df)
-}
-
-# Keep the top 5 playlists
-getTopPLs <- function(df) {
   return(df %>% 
-           top_n(5, followers) %>% 
+           top_n(n, followers) %>% 
            arrange(desc(followers)))
 }
-
 ```
 
+```{r}
+topPLs <- getTopPLs(instrumPL, n = 5)
+head(topPLs)
+```
 
-
-### Load in the playlist data and get track popularity
+### Get track popularity
 
 ```{r}
-playlists <- data.frame(playlist_name = "Christmas Instrumentals", 
-                 playlist_tracks_url = "https://api.spotify.com/v1/playlists/3UwpYtXlBzw9FN24TAYksU/tracks",
-                 playlist_num_tracks = 256,
-                 playlist_img = NA)
-# Extract the tracks
-tracks <-  get_playlist_tracks(playlists) 
-
-#NEED TO USE THIS:
-#get_track_audio_features(tracks[1,])
+# Extract the unique tracks
+tracks <-  get_playlist_tracks(topPLs) %>% 
+  distinct(track_uri, .keep_all = TRUE)
 
 # Get popularity
-trackPop <- get_track_popularity(tracks) %>% arrange(desc(track_popularity)) 
+trackPop <- get_track_popularity(tracks) %>% 
+  arrange(desc(track_popularity)) 
 
 # Join popularity df w/ track df, and select cols we want
 fullTrackDf <- join(trackPop, tracks, type = "full", by = "track_uri")
@@ -140,8 +134,10 @@ fullTrackDf <- fullTrackDf %>% select(track_name, track_popularity, track_uri, p
 head(fullTrackDf)
 ```
 
-
-
+Get audio features
+```{r}
+get_track_audio_features(tracks[1,])
+```
 
 
 
