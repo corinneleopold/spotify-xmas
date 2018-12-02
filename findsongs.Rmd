@@ -41,7 +41,7 @@ The `searchPlaylists` function performs a GET request that searches for Spotify 
 
 It returns a data frame with all playlist results.
 ```{r}
-searchPlaylists <- function(query) {
+searchPlaylists <- function(query, token) {
   # format query
   queryUrl <- paste("'https://api.spotify.com/v1/search?q=%22", URLencode(query), "%22&type=playlist'", 
                     sep="")
@@ -74,9 +74,11 @@ searchPlaylists <- function(query) {
 ```
 
 ```{r}
-token <- get_spotify_access_token()
-instrumPL <- searchPlaylists("Christmas instrumental") # Instrumental query
+instrumPL <- searchPlaylists("Christmas instrumental", get_spotify_access_token()) # Instrumental query
 head(instrumPL)
+
+acapellaPL <- searchPlaylists("a cappella christmas", get_spotify_access_token()) # A cappella query
+head(acapellaPL)
 ```
 
 
