@@ -121,7 +121,7 @@ head(topPLs)
 ```{r}
 # Extract the unique tracks
 tracks <-  get_playlist_tracks(topPLs) %>% 
-  distinct(track_uri, .keep_all = TRUE)
+  distinct(track_name, artist_name, .keep_all = TRUE)
 
 # Get popularity
 trackPop <- get_track_popularity(tracks) %>% 
@@ -134,9 +134,35 @@ fullTrackDf <- fullTrackDf %>% select(track_name, track_popularity, track_uri, p
 head(fullTrackDf)
 ```
 
-Get audio features
+### Clean up data frame
+- Remove low popularity tracks
+- Only keep 1 version of each track name
+- Balance the number of tracks per artist
+
 ```{r}
-get_track_audio_features(tracks[1,])
+# Remove low popularity tracks
+fullTrackDf <- fullTrackDf %>%
+  filter(track_popularity > 30)
+
+# If multiple tracks with the same name, keep the one w/ highest popularity
+fullTrackDfFilt <- fullTrackDf %>%
+  group_by(track_name) %>% 
+  arrange(desc(track_popularity)) %>%
+  top_n(1, track_popularity)
+
+# For every artist, only keep their top 4 songs (or more if tied)
+fullTrackDfFilt <- fullTrackDfFilt %>% 
+  group_by(artist_name) %>% 
+  top_n(4, track_popularity)
+
+fullTrackDfFilt
+```
+
+
+
+### Get audio features
+```{r}
+get_track_audio_features(fullTrackDf %>% select(track_name, track_uri) %>% slice(1))
 ```
 
 
