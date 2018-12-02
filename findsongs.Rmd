@@ -36,31 +36,49 @@ library(jsonlite)
 #Sys.setenv(SPOTIFY_CLIENT_SECRET = "your client secret")
 ```
 
+### Search for playlists that contain a term/phrase
+The `searchPlaylists` function performs a GET request that searches for Spotify playlists for a given query.
+It returns a data frame with all playlist results.
+```{r}
+searchPlaylists <- function(query) {
+  # format query
+  queryUrl <- paste("'https://api.spotify.com/v1/search?q=%22", URLencode(query), "%22&type=playlist'", 
+                    sep="")
+  # format authorization
+  authToken <- paste("'Authorization: Bearer ", token, "'", sep="")
+  
+  # format and make request
+  req <- paste("curl -X GET ", 
+               queryUrl, 
+               " -H 'Accept: application/json' -H 'Content-Type: application/json' -H ",
+               authToken, 
+               sep = "")
+  resp <- make_req(straighten(req))
 
-### Make a GET request to perform a search, extract the playlist results, and format them into a data frame
+  # Convert result to json
+  respJson <- toJSON(content(resp[[1]](), as="parsed"), 
+                     auto_unbox = TRUE, 
+                     pretty=TRUE) 
+  # Convert json to data frame
+  respDf <- fromJSON(respJson)
+
+  # Extract the playlist info we need
+  result <- data.frame(playlist_name = respDf$playlists$items$name,
+                       playlist_tracks_url = respDf$playlists$items$tracks$href,
+                       playlist_num_tracks = respDf$playlists$items$tracks$total,
+                       playlist_img = NA, # needed for later
+                       playlist_id = respDf$playlists$items$id,
+                       external_url = respDf$playlists$items$external_urls$spotify
+                       )
+  return(result)
+}
+```
 
 ```{r}
 token <- get_spotify_access_token()
-
-# Instrumentals
-req <- paste("curl -X GET 'https://api.spotify.com/v1/search?q=%22Christmas%20instrumental%22&type=playlist' -H 'Accept: application/json' -H 'Content-Type: application/json' -H 'Authorization: Bearer ", token, "'", sep="")
-resp <- make_req(straighten(req))
-
-# Convert result to json
-respJson <- toJSON(content(resp[[1]](), as="parsed"), auto_unbox = TRUE, pretty=TRUE) 
-# Convert json to data frame
-respDf <- fromJSON(respJson)
-
-# Extract the playlist info we need
-result <- data.frame(playlist_name = respDf$playlists$items$name,
-                     playlist_tracks_url = respDf$playlists$items$tracks$href,
-                     playlist_num_tracks = respDf$playlists$items$tracks$total,
-                     playlist_img = NA, # needed for later
-                     playlist_id = respDf$playlists$items$id,
-                     external_url = respDf$playlists$items$external_urls$spotify
-                     )
-head(result)
+instrumPL <- searchPlaylists("Christmas instrumental") # Instrumental query
 ```
+
 
 ### Since this returns many playlists, get the number of followers for each playlist and only keep the playlists with the top 5 follower counts.
 ```{r}
