@@ -73,20 +73,12 @@ searchPlaylists <- function(query, token) {
 }
 ```
 
-```{r}
-instrumPL <- searchPlaylists("Christmas instrumental", get_spotify_access_token()) # Instrumental query
-head(instrumPL)
-
-acapellaPL <- searchPlaylists("a cappella christmas", get_spotify_access_token()) # A cappella query
-head(acapellaPL)
-```
-
 
 ### Since `searchPlaylists` returns many playlists, get the number of followers for each playlist and only keep the playlists with the top n follower counts.
 ```{r}
 # Example: Get top 3 playlists
-# getTopPLs(playlistDf, n = 3)
-getTopPLs <- function(df, n = 5) {
+# getTopPLs(playlistDf, n = 3, get_spotify_access_token())
+getTopPLs <- function(df, n = 5, token) {
   
   df$followers <- NA
   i <- 1
@@ -113,27 +105,26 @@ getTopPLs <- function(df, n = 5) {
 }
 ```
 
-```{r}
-topPLs <- getTopPLs(instrumPL, n = 5)
-head(topPLs)
-```
 
 ### Get track popularity
 
 ```{r}
-# Extract the unique tracks
-tracks <-  get_playlist_tracks(topPLs) %>% 
-  distinct(track_name, artist_name, .keep_all = TRUE)
+getPop <- function(topPLs) {
+  # Extract the unique tracks
+  tracks <-  get_playlist_tracks(topPLs) %>% 
+    distinct(track_name, artist_name, .keep_all = TRUE)
+  
+  # Get popularity
+  trackPop <- get_track_popularity(tracks) %>% 
+    arrange(desc(track_popularity)) 
 
-# Get popularity
-trackPop <- get_track_popularity(tracks) %>% 
-  arrange(desc(track_popularity)) 
+  # Join popularity df w/ track df, and select cols we want
+  fullTrackDf <- join(trackPop, tracks, type = "full", by = "track_uri")
+  fullTrackDf <- fullTrackDf %>% 
+    select(track_name, track_popularity, track_uri, playlist_name, artist_name, track_open_spotify_url)
 
-# Join popularity df w/ track df, and select cols we want
-fullTrackDf <- join(trackPop, tracks, type = "full", by = "track_uri")
-fullTrackDf <- fullTrackDf %>% select(track_name, track_popularity, track_uri, playlist_name, artist_name, track_open_spotify_url)
-
-head(fullTrackDf)
+  return(fullTrackDf)
+}
 ```
 
 ### Clean up data frame
@@ -142,23 +133,57 @@ head(fullTrackDf)
 - Balance the number of tracks per artist
 
 ```{r}
-# Remove low popularity tracks
-fullTrackDf <- fullTrackDf %>%
-  filter(track_popularity > 30)
+# lowPop: only keep songs whose popularity is higher than this value (default 30)
+cleanup <- function(fullTrackDf, lowPop = 30) {
+  # Remove low popularity tracks
+  fullTrackDf <- fullTrackDf %>%
+    filter(track_popularity > lowPop)
 
-# If multiple tracks with the same name, keep the one w/ highest popularity
-fullTrackDfFilt <- fullTrackDf %>%
-  group_by(track_name) %>% 
-  arrange(desc(track_popularity)) %>%
-  top_n(1, track_popularity)
+  # If multiple tracks with the same name, keep the one w/ highest popularity
+  fullTrackDfFilt <- fullTrackDf %>%
+    group_by(track_name) %>% 
+    arrange(desc(track_popularity)) %>%
+    top_n(1, track_popularity)
 
-# For every artist, only keep their top 4 songs (or more if tied)
-fullTrackDfFilt <- fullTrackDfFilt %>% 
-  group_by(artist_name) %>% 
-  top_n(4, track_popularity)
+  # For every artist, only keep their top 4 songs (or more if tied)
+  fullTrackDfFilt <- fullTrackDfFilt %>% 
+    group_by(artist_name) %>% 
+    top_n(4, track_popularity)
 
-fullTrackDfFilt
+  return(fullTrackDfFilt)
+}
 ```
+
+
+### Run all functions
+Returns a final data frame for a given query
+
+```{r}
+createPlaylist <- function(query) {
+  # Get all playlists matching search term
+  playlists <- searchPlaylists(query, get_spotify_access_token())
+  
+  # Filter by playlists with most followers
+  topPlaylists <- getTopPLs(playlists, n = 5, get_spotify_access_token())
+  
+  trackDf <- getPop(topPlaylists)
+  trackDf <- cleanup(trackDf, lowPop = 30) 
+  
+  return(trackDf)
+}
+```
+
+
+```{r}
+# Instrumental songs
+instrumental <- createPlaylist("Christmas instrumental")
+
+# A Cappella songs
+acappella <- createPlaylist("a cappella christmas")
+head(acappella)
+```
+
+
 
 
 
