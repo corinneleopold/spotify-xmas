@@ -38,6 +38,7 @@ library(jsonlite)
 
 ### Search for playlists that contain a term/phrase
 The `searchPlaylists` function performs a GET request that searches for Spotify playlists for a given query.
+
 It returns a data frame with all playlist results.
 ```{r}
 searchPlaylists <- function(query) {
@@ -56,9 +57,7 @@ searchPlaylists <- function(query) {
   resp <- make_req(straighten(req))
 
   # Convert result to json
-  respJson <- toJSON(content(resp[[1]](), as="parsed"), 
-                     auto_unbox = TRUE, 
-                     pretty=TRUE) 
+  respJson <- toJSON(content(resp[[1]](), as="parsed"), auto_unbox = TRUE, pretty=TRUE) 
   # Convert json to data frame
   respDf <- fromJSON(respJson)
 
@@ -77,34 +76,43 @@ searchPlaylists <- function(query) {
 ```{r}
 token <- get_spotify_access_token()
 instrumPL <- searchPlaylists("Christmas instrumental") # Instrumental query
+head(instrumPL)
 ```
 
 
-### Since this returns many playlists, get the number of followers for each playlist and only keep the playlists with the top 5 follower counts.
+### Since `searchPlaylists` returns many playlists, get the number of followers for each playlist and only keep the playlists with the top 5 follower counts.
 ```{r}
-# Loop through playlist_id and make GET requests to get each playlist's number of followers
-# Store follower count in result$followers
-result$followers <- NA
-i <- 1
-for (id in result$playlist_id) {
+getFollowers <- function(df) {
   
-  followReq <- paste("curl -ik -X GET 'https://api.spotify.com/v1/playlists/", id, 
-                     "' -H 'Authorization: Bearer ", token, "'", sep="")
-  followResp <- make_req(straighten(followReq))
+  df$followers <- NA
+  i <- 1
   
-  # Convert result to json
-  followJson <- toJSON(content(followResp[[1]](), as="parsed"), auto_unbox = TRUE, pretty=TRUE)
-  # Convert json to data frame
-  followDf <- fromJSON(followJson)
+  # Loop through playlist_id, get each playlist's number of followers, and store result in df
+  for (id in df$playlist_id) {
+    followReq <- paste("curl -ik -X GET 'https://api.spotify.com/v1/playlists/", id, 
+                       "' -H 'Authorization: Bearer ", token, "'", sep="")
+    followResp <- make_req(straighten(followReq))
+  
+    # Convert result to json
+    followJson <- toJSON(content(followResp[[1]](), as="parsed"), auto_unbox = TRUE, pretty=TRUE)
+    # Convert json to data frame
+    followDf <- fromJSON(followJson)
 
-  # Set corresponding value in followers column
-  result$followers[i] <- followDf$followers$total
-  i <- i + 1
+    # Set corresponding value in followers column
+    df$followers[i] <- df$followers$total
+    i <- i + 1
+  }
+  
+  return(df)
 }
 
 # Keep the top 5 playlists
-result <- result %>% top_n(5, followers) %>% arrange(desc(followers))
-head(result)
+getTopPLs <- function(df) {
+  return(df %>% 
+           top_n(5, followers) %>% 
+           arrange(desc(followers)))
+}
+
 ```
 
 
