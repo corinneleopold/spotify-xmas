@@ -3,17 +3,17 @@ title: "Creating the Best Christmas Playlists"
 output: html_notebook
 ---
 
-This program finds the most popular, non-traditional versions of Christmas songs.
+This program creates an ideal Christmas playlist by merging the best songs according to your interests.
 
-See the most popular songs by categories including:
+Steps:  
+1. Get all playlists returned by a list of custom queries (e.g. "christmas instrumentals", "christmas a cappella")  
+2. Narrow the playlists to those with the top n followers  
+3. Obtain the popularity of every track  
+4. Perform a series of clean up steps (e.g. remove tracks below a popularity threshold, limit the number of tracks per artist)  
+5. Extract audio track features  
+6. Create a custom playlist depending on your desired audio features and playlist size  
 
-- Genre
-- Instrument only
-- Danceability
-- Acousticness
-- Tempo
 
-This can be used to create a mixed playlist or individual playlists by category.
 
 ### Install the spotifyr and curlconverter packages
 ```{r}
@@ -129,26 +129,32 @@ getPop <- function(topPLs) {
 
 ### Clean up data frame
 - Remove low popularity tracks
-- Only keep 1 version of each track name
+- Remove name + artist duplicates
+- Only keep a specified number of tracks w/ the same name
 - Balance the number of tracks per artist
 
 ```{r}
-# lowPop: only keep songs whose popularity is higher than this value (default 30)
-cleanup <- function(fullTrackDf, lowPop = 30) {
+cleanup <- function(fullTrackDf, minPop = 30, numDups = 1, songsEach = 4) {
   # Remove low popularity tracks
   fullTrackDf <- fullTrackDf %>%
-    filter(track_popularity > lowPop)
-
-  # If multiple tracks with the same name, keep the one w/ highest popularity
+    filter(track_popularity > minPop)
+  
+  # Remove any same name + same artist duplicates
+  fullTrackDf <-  fullTrackDf %>% 
+    distinct(track_name, artist_name, .keep_all = TRUE)
+  
+  # If multiple tracks with the same name, keep the most popular "numDups" tracks
+  # Default is to only keep 1
   fullTrackDfFilt <- fullTrackDf %>%
     group_by(track_name) %>% 
     arrange(desc(track_popularity)) %>%
-    top_n(1, track_popularity)
+    top_n(numDups, track_popularity)
 
-  # For every artist, only keep their top 4 songs (or more if tied)
+  # For every artist, keep their top "songsEach" songs (or more if tied). 
+  # Default is top 4 songs.
   fullTrackDfFilt <- fullTrackDfFilt %>% 
     group_by(artist_name) %>% 
-    top_n(4, track_popularity)
+    top_n(songsEach, track_popularity)
 
   return(fullTrackDfFilt)
 }
@@ -156,43 +162,141 @@ cleanup <- function(fullTrackDf, lowPop = 30) {
 
 
 ### Run all functions
-Returns a final data frame for a given query
-
+Returns a data frame of all tracks with their popularity info
 ```{r}
-createPlaylist <- function(query) {
-  # Get all playlists matching search term
-  playlists <- searchPlaylists(query, get_spotify_access_token())
+# Functions takes in a list of search queries and an optional list of specific playlists to include
+createPlaylist <- function(queries, playlists = NULL) {
+  allTracks <- data.frame()
   
-  # Filter by playlists with most followers
-  topPlaylists <- getTopPLs(playlists, n = 5, get_spotify_access_token())
+  for (query in queries) {
+    # Get all playlists matching search term
+    allPlaylists <- searchPlaylists(query, get_spotify_access_token())
+    
+    # Filter by playlists with most followers
+    topPlaylists <- getTopPLs(allPlaylists, n = 5, get_spotify_access_token())
+    
+    # Get track popularity
+    trackDf <- getPop(topPlaylists)
+    
+    # If playlists arg is supplied, get their track popularities and join all
+    if (!is.null(playlists)) {
+       for (pl in playlists) {
+         trackDf <- rbind(trackDf, getPop(pl))
+       }
+    }
+    
+    allTracks <- rbind(allTracks, trackDf)
+  }
   
-  trackDf <- getPop(topPlaylists)
-  trackDf <- cleanup(trackDf, lowPop = 30) 
-  
-  return(trackDf)
+  return(allTracks)
 }
 ```
 
+### Test it out! Create a playlist of 100 top instrumental songs, keeping the energy audio feature >= 0.27.
 
 ```{r}
-# Instrumental songs
-instrum <- createPlaylist("Christmas instrumental")
-instrum <- as.data.frame(instrum)
-head(instrum)
+# First set queries and use my own instrumental playlist
+queries <- c("Christmas instrumental", "upbeat christmas instrumental")
+myInstPl <- get_user_playlists('corinneleopold') %>% filter(playlist_name == "Instrumental/Background Xmas Mix")
 
-# A Cappella songs
-acappella <- createPlaylist("a cappella christmas")
-acappella <- as.data.frame(acappella)
-head(acappella)
+# Get results
+results <- createPlaylist(queries, list(myInstPl))
+trackDf <- cleanup(results, minPop = 30, numDups = 2) # Cleanup results with adjustable parameters
+trackDf <- as.data.frame(trackDf)
+
+# Merge results w/ audio features
+trackFeats <- get_track_audio_features(trackDf, get_spotify_access_token())
+trackDf <- join(trackDf, trackFeats, by = "track_uri")
 ```
 
+### To get my final playlist, I want to sample from the track dataframe until I get a playlist w/ average energy >= 0.27 and average popularity >= 40.
 
-### Get audio features
 ```{r}
-get_track_audio_features(as.data.frame(acappella), get_spotify_access_token())
+getFinalPlaylist <- function(df) {
+  aveEnergy <- 0
+  avePop <- 0
+  
+  while (aveEnergy < 0.27 | avePop < 40) {
+    songs <- sample_n(df, 100, weight = df$wt)
+    aveEnergy <- mean(songs$energy)
+    avePop <- mean(songs$track_popularity)
+  }
+  return(songs)
+}
+
+# Add probability weights to dataframe so that songs w/ higher energy have a higher prob
+trackDf <- trackDf %>%
+  mutate(wt = ifelse(energy > 0.23, .75, .25))
 ```
 
+```{r}
+# Get final playlist
+finalPlaylist <- getFinalPlaylist(trackDf)
+head(arrange(finalPlaylist, desc(track_popularity)), 20)
+```
+
+### Add tracks to Spotify playlist
+1. In Spotify, create an empty playlist
+2. Open web browser and go to the following url in order to allow the scope "playlist-modify-public":
+https://accounts.spotify.com/en/authorize?client_id=<your id>&redirect_uri=<your app uri>
+&scope=playlist-modify-public%20playlist-modify-public&response_type=token&state=123  
 
 
+    The app's redirect_uri can be set to "http://localhost:8888/callback" in the Spotify developer dashboard.  
 
+3. Step 2 will return an access token in the redirect url that you will copy and paste here to use in the "token" argument.
+```{r}
+
+# PASTE TOKEN HERE
+token <- ""
+
+# Makes request to add songs, specified as a comma separated list in trackUris
+makeReq <- function(trackUris, username, playlist, token) {
+  
+  authToken <- paste("'Authorization: Bearer ", token, "'", sep="")
+  url <- paste("'https://api.spotify.com/v1/users/", username, "/playlists/", 
+               playlist$playlist_uri, "/tracks?uris=", trackUris, "'", sep="")
+  
+  req <- paste("curl -i -X POST ",
+                 url,
+                 " -H ", authToken, 
+                 " -H 'Content-Type: application/json'",
+                 " -H 'Accept: application/json'",
+                 sep = "")
+    resp <- make_req(straighten(req))
+  
+    respJson <- toJSON(content(resp[[1]](), as="parsed"), auto_unbox = TRUE, pretty=TRUE) 
+    return(respJson)
+  }
+
+makePlaylist <- function(username, spotifyPlaylistName, finalPlaylist, token) {
+  
+  # Paste "spotify:track:" in front of all track uris
+  finalPlaylist$track_uri <- paste0("spotify:track:", finalPlaylist$track_uri)
+  
+  # Split df because we can only add a number of songs at a time
+  # Make track uris comma separated
+  playlist1 <- finalPlaylist %>% slice(1:10)
+  trackUris1 <- paste0(playlist1$track_uri, collapse = ",")
+  playlist2 <- finalPlaylist %>% slice(11:50)
+  trackUris2 <- paste0(playlist2$track_uri, collapse = ",")
+  playlist3 <- finalPlaylist %>% slice(51:100)
+  trackUris3 <- paste0(playlist3$track_uri, collapse = ",")
+
+  # Get the playlist you wish to add these songs to (or create a new empty one)
+  playlist <- get_user_playlists(username) %>% filter(playlist_name == spotifyPlaylistName)
+  
+  # Add songs to playlist
+  makeReq(trackUris1, username, playlist, token)
+  makeReq(trackUris2, username, playlist, token)
+  makeReq(trackUris3, username, playlist, token)
+}
+```
+
+```{r}
+makePlaylist(username = "corinneleopold", 
+             spotifyPlaylistName = "New Xmas Playlist",
+             finalPlaylist, 
+             token)
+```
 
